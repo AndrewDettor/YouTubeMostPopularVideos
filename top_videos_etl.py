@@ -1,5 +1,4 @@
 import os
-from dotenv import load_dotenv
 import requests
 from datetime import datetime, timezone
 import pandas as pd
@@ -47,7 +46,11 @@ def parse_video_json(video):
             num_likes, 
             num_comments]    
 
-def make_video_request():
+def make_video_request(api_key):
+    script_timestamp = datetime.now(timezone.utc) # YT API uses UTC timezone
+
+    videos_api_url = "https://www.googleapis.com/youtube/v3/videos"
+
     video_df = pd.DataFrame(columns=["script_timestamp", 
                                  "video_id", 
                                  "publish_datetime", 
@@ -63,6 +66,8 @@ def make_video_request():
                                  "num_views", 
                                  "num_likes", 
                                  "num_comments"])
+    
+    # each API call gives 200 videos split into 4 pages, but you have to call again to see the other pages
     pageToken = ""
 
     while pageToken is not None:
@@ -95,17 +100,59 @@ def make_video_request():
     return video_df
 
 def main():
-    # assume API calls are made at the same exact time
-    script_timestamp = datetime.now(timezone.utc) # YT API uses UTC timezone
-
-    # load environment variables from .env file
-    load_dotenv("environment_variables.env")
+    # load environment variables
+    # put in bashrc because I run out of ram installing dotenv
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
 
-    videos_api_url = "https://www.googleapis.com/youtube/v3/videos"
+    # EXTRACT
+    video_df = make_video_request(api_key)
+    
+    # TRANSFORM
+    # turn publish_datetime into datetime format
+    video_df["publish_datetime"] = pd.to_datetime(video_df["publish_datetime"], format="ISO8601")
 
-    video_df = make_video_request()
+    # parse duration into seconds
+    video_df["duration"] = pd.to_timedelta(video_df["duration"]).apply(lambda x: x.seconds)
+    video_df.rename(columns={"duration": "duration_seconds"}, inplace=True)
+
+    # fill nulls
+    video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].fillna(0)
+    
+    # turn to int
+    video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].astype(dtype="int")
+
+    # LOAD
+    # connect to database
+    host = "youtubeviewprediction.cd0c8oow2pnr.us-east-1.rds.amazonaws.com"
+    port = 5432
+    database = "postgres"
+    user = "postgres"
+
+    try:
+        # Connect to the PostgreSQL database
+        connection = psycopg2.connect(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=psql_pw
+        )
+
+        # Create a cursor object using the cursor() method
+        cursor = connection.cursor()
+
+        # Execute a SQL query
+        cursor.execute("SELECT version();")
+
+        # Fetch result
+        record = cursor.fetchone()
+        print("You are connected to - ", record, "\n")
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while connecting to PostgreSQL", error)
+
+    # create tables
 
     
 
