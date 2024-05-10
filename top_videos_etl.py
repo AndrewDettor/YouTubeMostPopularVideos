@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import math
 import psycopg2
+import psycopg2.extras
 
 def parse_video_json(video):
 
@@ -47,11 +48,11 @@ def parse_video_json(video):
             num_comments]    
 
 def make_video_request(api_key):
-    script_timestamp = datetime.now(timezone.utc) # YT API uses UTC timezone
+    collected_at = datetime.now(timezone.utc) # YT API uses UTC timezone
 
     videos_api_url = "https://www.googleapis.com/youtube/v3/videos"
 
-    video_df = pd.DataFrame(columns=["script_timestamp", 
+    video_df = pd.DataFrame(columns=["collected_at", 
                                  "video_id", 
                                  "publish_datetime", 
                                  "channel_id",
@@ -88,7 +89,7 @@ def make_video_request(api_key):
 
             for video in response_json["items"]:
                 # add video details and datetime of request to end of video dataframe
-                video_df.loc[len(video_df)] = [script_timestamp] + parse_video_json(video)
+                video_df.loc[len(video_df)] = [collected_at] + parse_video_json(video)
 
             # get nextPageToken with null safety
             pageToken = response_json.get("nextPageToken", None)
@@ -99,34 +100,11 @@ def make_video_request(api_key):
 
     return video_df
 
-def main():
-    # load environment variables
-    # put in bashrc because I run out of ram installing dotenv
-    api_key = os.getenv("API_KEY")
-    psql_pw = os.getenv("PSQL_PW")
-
-    # EXTRACT
-    video_df = make_video_request(api_key)
-    
-    # TRANSFORM
-    # turn publish_datetime into datetime format
-    video_df["publish_datetime"] = pd.to_datetime(video_df["publish_datetime"], format="ISO8601")
-
-    # parse duration into seconds
-    video_df["duration"] = pd.to_timedelta(video_df["duration"]).apply(lambda x: x.seconds)
-    video_df.rename(columns={"duration": "duration_seconds"}, inplace=True)
-
-    # fill nulls
-    video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].fillna(0)
-    
-    # turn to int
-    video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].astype(dtype="int")
-
-    # LOAD
+def make_db_connection(psql_pw):
     # connect to database
     host = "youtubeviewprediction.cd0c8oow2pnr.us-east-1.rds.amazonaws.com"
     port = 5432
-    database = "postgres"
+    dbname = "YouTubeViewPrediction"
     user = "postgres"
 
     try:
@@ -134,7 +112,7 @@ def main():
         connection = psycopg2.connect(
             host=host,
             port=port,
-            database=database,
+            dbname=dbname,
             user=user,
             password=psql_pw
         )
@@ -148,12 +126,69 @@ def main():
         # Fetch result
         record = cursor.fetchone()
         print("You are connected to - ", record, "\n")
+        return connection, cursor
 
     except (Exception, psycopg2.Error) as error:
         print("Error while connecting to PostgreSQL", error)
+        return None, None
 
-    # create tables
+def insert_columns(df, cols, db_table, db_cursor, db_connection):
+    data = (df.loc[:, cols]
+                .to_records(index=False)
+                .tolist())
 
+    query = f"INSERT INTO {db_table} ({','.join(cols)}) VALUES %s"
+
+    try:
+        # Execute your SQL query
+        psycopg2.extras.execute_values(db_cursor, query, data)
+        
+        # Commit the transaction
+        db_connection.commit()
+        print(f"Successfully inserted columns: {','.join(cols)}")
+    except psycopg2.Error as e:
+        # If an error occurs during execution, handle the exception
+        print("Error executing query:", e)
+
+def main():
+    # load environment variables
+    # put in bashrc because I run out of ram installing dotenv
+    api_key = os.getenv("API_KEY")
+    psql_pw = os.getenv("PSQL_PW")
+
+    # EXTRACT
+    video_df = make_video_request(api_key)
+    
+    # TRANSFORM
+    # turn publish_datetime into datetime format
+    video_df["publish_datetime"] = pd.to_datetime(video_df["publish_datetime"], format="ISO8601")
+    video_df.rename(columns={"publish_datetime": "published_at"}, inplace=True)
+
+    # parse duration into seconds
+    video_df["duration"] = pd.to_timedelta(video_df["duration"]).apply(lambda x: x.seconds)
+    video_df.rename(columns={"duration": "duration_seconds"}, inplace=True)
+
+    # fill nulls
+    video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].fillna(0)
+    
+    # turn to int
+    video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].astype(dtype="int")
+
+    # LOAD
+    connection, cursor = make_db_connection(psql_pw)
+
+    # database and tables already created in pgAdmin
+    # split video dataframe into video_fact and video_dim
+    
+    # select cols to insert
+    video_fact_cols = ["collected_at", "video_id", "num_views", "num_likes", "num_comments"]
+    insert_columns(video_df, video_fact_cols, "video_fact", cursor, connection)
+    
+    video_dim_cols = ["video_id", "channel_id", "video_title", "video_description", "num_tags", "duration_seconds", "licensed_content", "made_for_kids", "published_at", "category_id"]
+    insert_columns(video_df, video_dim_cols, "video_dim", cursor, connection)
+    
+
+    
     
 
 if __name__ == "__main__":
