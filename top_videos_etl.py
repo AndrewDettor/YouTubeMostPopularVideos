@@ -47,9 +47,7 @@ def parse_video_json(video):
             num_likes, 
             num_comments]    
 
-def make_video_request(api_key):
-    collected_at = datetime.now(timezone.utc) # YT API uses UTC timezone
-
+def make_video_request(api_key, collected_at):
     videos_api_url = "https://www.googleapis.com/youtube/v3/videos"
 
     video_df = pd.DataFrame(columns=["collected_at", 
@@ -99,6 +97,66 @@ def make_video_request(api_key):
             pageToken = None
 
     return video_df
+
+def parse_channel_json(channel):
+    channel_id = channel["id"]
+
+    # snippet
+    channel_created_datetime = channel["snippet"]["publishedAt"]
+    channel_name = channel["snippet"]["title"]
+
+    # statistics
+    channel_total_views = channel["statistics"].get("viewCount", None)
+    channel_num_subscribers = channel["statistics"].get("subscriberCount", None)
+    channel_num_videos = channel["statistics"].get("videoCount", None)
+
+    return [channel_id, 
+            channel_created_datetime,
+            channel_name, 
+            channel_total_views, 
+            channel_num_subscribers,
+            channel_num_videos] 
+        
+def make_channel_request(api_key, collected_at, channel_ids):
+    channels_api_url = "https://www.googleapis.com/youtube/v3/channels"
+
+    channel_df = pd.DataFrame(columns=["collected_at", 
+                                "channel_id", 
+                                "created_datetime", 
+                                "channel_name"
+                                "channel_total_views", 
+                                "num_subscribers",
+                                "num_videos"])
+
+    # API limits 50 channels per call with no pages
+    # split channels into chunks of 50
+    channels_chunked = make_chunks(channel_ids, 50)
+
+    for channels in channels_chunked:
+        params = {
+            "key": api_key,
+            "part": "id, snippet, statistics",
+            "id": ", ".join(channels),
+            "maxResults": 50,
+        }
+
+        response = requests.get(channels_api_url, params=params)
+
+        if response.status_code == 200:
+            response_json = response.json()
+
+            for channel in response_json["items"]:
+                # add channel details and datetime of request to end of channel dataframe
+                channel_df.loc[len(channel_df)] = [collected_at] + parse_channel_json(channel)
+
+        else:
+            print(f"response.status_code = {response.status_code}")
+
+    return channel_df
+
+def make_chunks(lst, n):
+    # https://stackoverflow.com/questions/312443/how-do-i-split-a-list-into-equally-sized-chunks
+    return [lst[i:i + n] for i in range(0, len(lst), n)]
 
 def make_db_connection(psql_pw):
     # connect to database
@@ -151,16 +209,20 @@ def insert_columns(df, cols, db_table, db_cursor, db_connection):
         print("Error executing query:", e)
 
 def main():
+    collected_at = datetime.now(timezone.utc) # YT API uses UTC timezone
+    
     # load environment variables
     # put in bashrc because I run out of ram installing dotenv
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
 
+    # Videos ETL
+    # get data on top 200 most popular videos currently
     # EXTRACT
-    video_df = make_video_request(api_key)
+    video_df = make_video_request(api_key, collected_at)
     
     # TRANSFORM
-    # turn publish_datetime into datetime format
+    # turn publish_datetime into datetime dtype
     video_df["publish_datetime"] = pd.to_datetime(video_df["publish_datetime"], format="ISO8601")
     video_df.rename(columns={"publish_datetime": "published_at"}, inplace=True)
 
@@ -175,20 +237,37 @@ def main():
     video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].astype(dtype="int")
 
     # LOAD
-    connection, cursor = make_db_connection(psql_pw)
+    # connection, cursor = make_db_connection(psql_pw)
 
+    # # database and tables already created in pgAdmin
+    # # split video dataframe into video_fact and video_dim
+    
+    # # select cols to insert
+    # video_fact_cols = ["collected_at", "video_id", "num_views", "num_likes", "num_comments"]
+    # insert_columns(video_df, video_fact_cols, "video_fact", cursor, connection)
+    
+    # video_dim_cols = ["video_id", "channel_id", "video_title", "video_description", "num_tags", "duration_seconds", "licensed_content", "made_for_kids", "published_at", "category_id"]
+    # insert_columns(video_df, video_dim_cols, "video_dim", cursor, connection)
+    
+    # Channels ETL
+    # get YT channel metadata associated with top 200 videos
+    unique_channel_ids = video_df["channel_id"].unique()
+
+    # EXTRACT
+    channel_df = make_channel_request(api_key, collected_at, unique_channel_ids)
+    
+    # TRANSFORM
+    # Turn created_datetime into datetime
+    channel_df["created_datetime"] = pd.to_datetime(channel_df["created_datetime"], format="ISO8601")
+
+    # Fill NaNs and turn these into ints
+    channel_df[["total_views", "num_subscribers", "num_videos"]] = channel_df[["total_views", "num_subscribers", "num_videos"]].fillna(0)
+    channel_df[["total_views", "num_subscribers", "num_videos"]] = channel_df[["total_views", "num_subscribers", "num_videos"]].astype(dtype="int")
+    print(channel_df.dtypes)
+
+    # LOAD
     # database and tables already created in pgAdmin
-    # split video dataframe into video_fact and video_dim
-    
-    # select cols to insert
-    video_fact_cols = ["collected_at", "video_id", "num_views", "num_likes", "num_comments"]
-    insert_columns(video_df, video_fact_cols, "video_fact", cursor, connection)
-    
-    video_dim_cols = ["video_id", "channel_id", "video_title", "video_description", "num_tags", "duration_seconds", "licensed_content", "made_for_kids", "published_at", "category_id"]
-    insert_columns(video_df, video_dim_cols, "video_dim", cursor, connection)
-    
-
-    
+    # split channels dataframe into channel_fact and channel_dim
     
 
 if __name__ == "__main__":
