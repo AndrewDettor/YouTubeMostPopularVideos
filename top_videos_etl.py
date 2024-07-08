@@ -265,6 +265,23 @@ def main():
     channel_df[["total_views", "num_subscribers", "num_videos"]] = channel_df[["total_views", "num_subscribers", "num_videos"]].astype(dtype="int")
     print(channel_df.dtypes)
 
+    #     Traceback (most recent call last):
+    # File "/home/ec2-user/YouTubeViewPrediction/top_videos_etl.py", line 274, in <module>
+    #     main()
+    # File "/home/ec2-user/YouTubeViewPrediction/top_videos_etl.py", line 257, in main
+    #     channel_df = make_channel_request(api_key, collected_at, unique_channel_ids)
+    #                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    # File "/home/ec2-user/YouTubeViewPrediction/top_videos_etl.py", line 150, in make_channel_request
+    #     channel_df.loc[len(channel_df)] = [collected_at] + parse_channel_json(channel)
+    #     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+    # File "/home/ec2-user/anaconda3/lib/python3.11/site-packages/pandas/core/indexing.py", line 911, in __setitem__
+    #     iloc._setitem_with_indexer(indexer, value, self.name)
+    # File "/home/ec2-user/anaconda3/lib/python3.11/site-packages/pandas/core/indexing.py", line 1932, in _setitem_with_indexer
+    #     self._setitem_with_indexer_missing(indexer, value)
+    # File "/home/ec2-user/anaconda3/lib/python3.11/site-packages/pandas/core/indexing.py", line 2306, in _setitem_with_indexer_missing
+    #     raise ValueError("cannot set a row with mismatched columns")
+    # ValueError: cannot set a row with mismatched columns
+
     # LOAD
     # database and tables already created in pgAdmin
     # split channels dataframe into channel_fact and channel_dim
