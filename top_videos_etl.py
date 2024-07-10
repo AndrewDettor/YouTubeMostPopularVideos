@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 import math
+from sshtunnel import SSHTunnelForwarder
+from dotenv import load_dotenv
 import psycopg2
 import psycopg2.extras
 
@@ -123,7 +125,7 @@ def make_channel_request(api_key, collected_at, channel_ids):
     channel_df = pd.DataFrame(columns=["collected_at", 
                                 "channel_id", 
                                 "created_datetime", 
-                                "channel_name"
+                                "channel_name",
                                 "channel_total_views", 
                                 "num_subscribers",
                                 "num_videos"])
@@ -154,29 +156,78 @@ def make_channel_request(api_key, collected_at, channel_ids):
 
     return channel_df
 
+def parse_videoCategories_json(category):
+    id = category["id"]
+    name = category["snippet"]["title"]
+
+    return [id, name]
+
+def make_categories_request(api_key):
+    videoCategories_api_url = "https://www.googleapis.com/youtube/v3/videoCategories"
+    
+    videoCategories_df = pd.DataFrame(columns=["category_id","category_name"])
+
+    params = {
+        "key": api_key,
+        "part": "snippet",
+        "regionCode": "US",
+    }
+
+    response = requests.get(videoCategories_api_url, params=params)
+
+    if response.status_code == 200:
+        response_json = response.json()
+
+        for category in response_json["items"]:
+            # add channel details and datetime of request to end of video dataframe
+            videoCategories_df.loc[len(videoCategories_df)] = parse_videoCategories_json(category)
+
+    else:
+        print(f"response.status_code = {response.status_code}")
+
+    return videoCategories_df
+
 def make_chunks(lst, n):
     # https://stackoverflow.com/questions/312443/how-do-i-split-a-list-into-equally-sized-chunks
     return [lst[i:i + n] for i in range(0, len(lst), n)]
 
 def make_db_connection(psql_pw):
-    # connect to database
-    host = "youtubeviewprediction.cd0c8oow2pnr.us-east-1.rds.amazonaws.com"
-    port = 5432
-    dbname = "YouTubeViewPrediction"
-    user = "postgres"
+    # SSH parameters
+    bastion_host = 'ec2-34-224-93-62.compute-1.amazonaws.com'
+    bastion_user = 'ec2-user'
+    bastion_key = 'C:\\Users\\detto\\Documents\\ec2-key-pair.pem'
+
+    # RDS parameters
+    rds_host = 'youtubeviewprediction.cd0c8oow2pnr.us-east-1.rds.amazonaws.com'
+    rds_user = 'postgres'
+    rds_password = psql_pw
+    rds_database = 'YouTubeViewPrediction'
+    rds_port = 5432
 
     try:
-        # Connect to the PostgreSQL database
-        connection = psycopg2.connect(
-            host=host,
-            port=port,
-            dbname=dbname,
-            user=user,
-            password=psql_pw
+        # Create an SSH tunnel
+        tunnel = SSHTunnelForwarder(
+            (bastion_host, 22),
+            ssh_username=bastion_user,
+            ssh_pkey=bastion_key,
+            remote_bind_address=(rds_host, rds_port),
+            local_bind_address=('localhost', 6543)  # Choose a local port for the tunnel
+        )
+
+        # Start the tunnel
+        tunnel.start()
+
+        # Connect to PostgreSQL through the tunnel
+        conn = psycopg2.connect(
+            database=rds_database,
+            user=rds_user,
+            password=rds_password,
+            host=tunnel.local_bind_host,
+            port=tunnel.local_bind_port
         )
 
         # Create a cursor object using the cursor() method
-        cursor = connection.cursor()
+        cursor = conn.cursor()
 
         # Execute a SQL query
         cursor.execute("SELECT version();")
@@ -184,11 +235,10 @@ def make_db_connection(psql_pw):
         # Fetch result
         record = cursor.fetchone()
         print("You are connected to - ", record, "\n")
-        return connection, cursor
+        return conn, cursor
 
     except (Exception, psycopg2.Error) as error:
         print("Error while connecting to PostgreSQL", error)
-        return None, None
 
 def insert_columns(df, cols, db_table, db_cursor, db_connection):
     data = (df.loc[:, cols]
@@ -203,7 +253,7 @@ def insert_columns(df, cols, db_table, db_cursor, db_connection):
         
         # Commit the transaction
         db_connection.commit()
-        print(f"Successfully inserted columns: {','.join(cols)}")
+        print(f"Successfully inserted columns: {', '.join(cols)}")
     except psycopg2.Error as e:
         # If an error occurs during execution, handle the exception
         print("Error executing query:", e)
@@ -211,10 +261,13 @@ def insert_columns(df, cols, db_table, db_cursor, db_connection):
 def main():
     collected_at = datetime.now(timezone.utc) # YT API uses UTC timezone
     
-    # load environment variables
-    # put in bashrc because I run out of ram installing dotenv
+    # Load environment variables from .env file
+    load_dotenv("environment_variables.env")
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
+
+    # Connect to AWS RDS through SSH tunnel
+    connection, cursor = make_db_connection(psql_pw)
 
     # Videos ETL
     # get data on top 200 most popular videos currently
@@ -223,7 +276,7 @@ def main():
     
     # TRANSFORM
     # turn publish_datetime into datetime dtype
-    video_df["publish_datetime"] = pd.to_datetime(video_df["publish_datetime"], format="ISO8601")
+    video_df["publish_datetime"] = pd.to_datetime(video_df["publish_datetime"])
     video_df.rename(columns={"publish_datetime": "published_at"}, inplace=True)
 
     # parse duration into seconds
@@ -234,20 +287,18 @@ def main():
     video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].fillna(0)
     
     # turn to int
-    video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].astype(dtype="int")
+    video_df[["num_views", "num_likes", "num_comments"]] = video_df[["num_views", "num_likes", "num_comments"]].astype(dtype=int)
 
     # LOAD
-    # connection, cursor = make_db_connection(psql_pw)
-
-    # # database and tables already created in pgAdmin
-    # # split video dataframe into video_fact and video_dim
+    # database and tables already created in pgAdmin
+    # split video dataframe into video_fact and video_dim
     
-    # # select cols to insert
-    # video_fact_cols = ["collected_at", "video_id", "num_views", "num_likes", "num_comments"]
-    # insert_columns(video_df, video_fact_cols, "video_fact", cursor, connection)
+    # select cols to insert
+    video_fact_cols = ["collected_at", "video_id", "num_views", "num_likes", "num_comments"]
+    insert_columns(video_df, video_fact_cols, "video_fact", cursor, connection)
     
-    # video_dim_cols = ["video_id", "channel_id", "video_title", "video_description", "num_tags", "duration_seconds", "licensed_content", "made_for_kids", "published_at", "category_id"]
-    # insert_columns(video_df, video_dim_cols, "video_dim", cursor, connection)
+    video_dim_cols = ["video_id", "channel_id", "video_title", "video_description", "num_tags", "duration_seconds", "licensed_content", "made_for_kids", "published_at", "category_id"]
+    insert_columns(video_df, video_dim_cols, "video_dim", cursor, connection)
     
     # Channels ETL
     # get YT channel metadata associated with top 200 videos
@@ -258,34 +309,28 @@ def main():
     
     # TRANSFORM
     # Turn created_datetime into datetime
-    channel_df["created_datetime"] = pd.to_datetime(channel_df["created_datetime"], format="ISO8601")
-
+    channel_df["created_datetime"] = pd.to_datetime(channel_df["created_datetime"])
+    
     # Fill NaNs and turn these into ints
-    channel_df[["total_views", "num_subscribers", "num_videos"]] = channel_df[["total_views", "num_subscribers", "num_videos"]].fillna(0)
-    channel_df[["total_views", "num_subscribers", "num_videos"]] = channel_df[["total_views", "num_subscribers", "num_videos"]].astype(dtype="int")
-    print(channel_df.dtypes)
-
-    #     Traceback (most recent call last):
-    # File "/home/ec2-user/YouTubeViewPrediction/top_videos_etl.py", line 274, in <module>
-    #     main()
-    # File "/home/ec2-user/YouTubeViewPrediction/top_videos_etl.py", line 257, in main
-    #     channel_df = make_channel_request(api_key, collected_at, unique_channel_ids)
-    #                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    # File "/home/ec2-user/YouTubeViewPrediction/top_videos_etl.py", line 150, in make_channel_request
-    #     channel_df.loc[len(channel_df)] = [collected_at] + parse_channel_json(channel)
-    #     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-    # File "/home/ec2-user/anaconda3/lib/python3.11/site-packages/pandas/core/indexing.py", line 911, in __setitem__
-    #     iloc._setitem_with_indexer(indexer, value, self.name)
-    # File "/home/ec2-user/anaconda3/lib/python3.11/site-packages/pandas/core/indexing.py", line 1932, in _setitem_with_indexer
-    #     self._setitem_with_indexer_missing(indexer, value)
-    # File "/home/ec2-user/anaconda3/lib/python3.11/site-packages/pandas/core/indexing.py", line 2306, in _setitem_with_indexer_missing
-    #     raise ValueError("cannot set a row with mismatched columns")
-    # ValueError: cannot set a row with mismatched columns
-
+    channel_df[["channel_total_views", "num_subscribers", "num_videos"]] = channel_df[["channel_total_views", "num_subscribers", "num_videos"]].fillna(0)
+    channel_df[["channel_total_views", "num_subscribers", "num_videos"]] = channel_df[["channel_total_views", "num_subscribers", "num_videos"]].astype(dtype=np.int64)
+    
     # LOAD
     # database and tables already created in pgAdmin
     # split channels dataframe into channel_fact and channel_dim
-    
+    channel_fact_cols = ["collected_at", "channel_id", "channel_total_views", "num_subscribers", "num_videos"]
+    insert_columns(channel_df, channel_fact_cols, "channel_fact", cursor, connection)
+
+    channel_dim_cols = ["channel_id", "channel_name", "created_datetime"]
+    insert_columns(channel_df, channel_dim_cols, "channel_dim", cursor, connection)
+
+    # Categories ETL
+    # EXTRACT
+    videoCategories_df = make_categories_request(api_key)
+
+    # LOAD
+    # database and table already created in pgAdmin
+    insert_columns(videoCategories_df, ["category_id", "category_name"], "categories_dim", cursor, connection)
 
 if __name__ == "__main__":
     main()
