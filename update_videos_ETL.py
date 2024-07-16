@@ -17,6 +17,14 @@ def main():
     # Connect to AWS RDS through SSH tunnel
     conn, cursor, tunnel = make_db_connection(psql_pw)
 
+    # get all video_ids in video_dim table
+
+    # make api request for current info on all the videos
+
+    # do the same data cleaning as new_videos_ETL
+
+    # load into video_fact table
+
     conn.close()
     cursor.close()
     tunnel.stop()

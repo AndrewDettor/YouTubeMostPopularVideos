@@ -66,6 +66,8 @@ def main():
 
     # LOAD
     # database and table already created in pgAdmin
+
+    # insert into dim table
     insert_rows(categories_df, 
                 ["category_id", "category_name"], 
                 "categories_dim", 
