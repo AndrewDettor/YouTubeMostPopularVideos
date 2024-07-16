@@ -235,25 +235,48 @@ def make_db_connection(psql_pw):
         # Fetch result
         record = cursor.fetchone()
         print("You are connected to - ", record, "\n")
-        return conn, cursor
+        return conn, cursor, tunnel
 
     except (Exception, psycopg2.Error) as error:
         print("Error while connecting to PostgreSQL", error)
+        tunnel.stop()
 
-def insert_columns(df, cols, db_table, db_cursor, db_connection):
+def insert_fact_columns(df, cols, table_name, cursor, conn):
     data = (df.loc[:, cols]
                 .to_records(index=False)
                 .tolist())
 
-    query = f"INSERT INTO {db_table} ({','.join(cols)}) VALUES %s"
+    query = f"INSERT INTO {table_name} ({','.join(cols)}) VALUES %s"
 
     try:
         # Execute your SQL query
-        psycopg2.extras.execute_values(db_cursor, query, data)
+        psycopg2.extras.execute_values(cursor, query, data)
         
         # Commit the transaction
-        db_connection.commit()
-        print(f"Successfully inserted columns: {', '.join(cols)}")
+        conn.commit()
+        print(f"Successfully inserted columns into {table_name}: {', '.join(cols)}")
+    except psycopg2.Error as e:
+        # If an error occurs during execution, handle the exception
+        print("Error executing query:", e)
+
+def insert_dim_columns(df, cols, pk, table_name, cursor, conn):
+    data = (df.loc[:, cols]
+                .to_records(index=False)
+                .tolist())
+
+    # don't abort entire transaction because primary key already in table
+    query = f"INSERT INTO {table_name} ({','.join(cols)}) \
+            VALUES %s \
+            ON CONFLICT ({pk}) \
+            DO NOTHING"
+
+    try:
+        # Execute your SQL query
+        psycopg2.extras.execute_values(cursor, query, data)
+        
+        # Commit the transaction
+        conn.commit()
+        print(f"Successfully inserted columns into {table_name}: {', '.join(cols)}")
     except psycopg2.Error as e:
         # If an error occurs during execution, handle the exception
         print("Error executing query:", e)
@@ -267,7 +290,7 @@ def main():
     psql_pw = os.getenv("PSQL_PW")
 
     # Connect to AWS RDS through SSH tunnel
-    connection, cursor = make_db_connection(psql_pw)
+    conn, cursor = make_db_connection(psql_pw)
 
     # Videos ETL
     # get data on top 200 most popular videos currently
@@ -294,11 +317,18 @@ def main():
     # split video dataframe into video_fact and video_dim
     
     # select cols to insert
-    video_fact_cols = ["collected_at", "video_id", "num_views", "num_likes", "num_comments"]
-    insert_columns(video_df, video_fact_cols, "video_fact", cursor, connection)
+    insert_fact_columns(video_df, 
+                        ["collected_at", "video_id", "num_views", "num_likes", "num_comments"], 
+                        "video_fact", 
+                        cursor, 
+                        conn)
     
-    video_dim_cols = ["video_id", "channel_id", "video_title", "video_description", "num_tags", "duration_seconds", "licensed_content", "made_for_kids", "published_at", "category_id"]
-    insert_columns(video_df, video_dim_cols, "video_dim", cursor, connection)
+    insert_dim_columns(video_df, 
+                       ["video_id", "channel_id", "video_title", "video_description", "num_tags", "duration_seconds", "licensed_content", "made_for_kids", "published_at", "category_id"], 
+                       "video_id", 
+                       "video_dim", 
+                       cursor, 
+                       conn)
     
     # Channels ETL
     # get YT channel metadata associated with top 200 videos
@@ -318,11 +348,18 @@ def main():
     # LOAD
     # database and tables already created in pgAdmin
     # split channels dataframe into channel_fact and channel_dim
-    channel_fact_cols = ["collected_at", "channel_id", "channel_total_views", "num_subscribers", "num_videos"]
-    insert_columns(channel_df, channel_fact_cols, "channel_fact", cursor, connection)
+    insert_fact_columns(channel_df, 
+                        ["collected_at", "channel_id", "channel_total_views", "num_subscribers", "num_videos"], 
+                        "channel_fact", 
+                        cursor, 
+                        conn)
 
-    channel_dim_cols = ["channel_id", "channel_name", "created_datetime"]
-    insert_columns(channel_df, channel_dim_cols, "channel_dim", cursor, connection)
+    insert_dim_columns(channel_df, 
+                       ["channel_id", "channel_name", "created_datetime"], 
+                       "channel_id", 
+                       "channel_dim", 
+                       cursor, 
+                       conn)
 
     # Categories ETL
     # EXTRACT
@@ -330,7 +367,12 @@ def main():
 
     # LOAD
     # database and table already created in pgAdmin
-    insert_columns(videoCategories_df, ["category_id", "category_name"], "categories_dim", cursor, connection)
+    insert_dim_columns(videoCategories_df, 
+                       ["category_id", "category_name"], 
+                       "category_id", 
+                       "categories_dim", 
+                       cursor, 
+                       conn)
 
 if __name__ == "__main__":
     main()
