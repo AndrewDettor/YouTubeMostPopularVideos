@@ -98,3 +98,24 @@ def find_values_not_in_col(values, col, table_name, cursor):
     except psycopg2.Error as e:
         # If an error occurs during execution, handle the exception
         print("Error executing query in find_values_not_in_col:", e)
+
+def select_all_from_col(col, table_name, cursor):
+    query = f"SELECT {col} \
+            FROM {table_name}"
+    
+    try:
+        # Execute SQL query
+        cursor.execute(query)
+        
+        # Fetch all rows from the query
+        # if there's too many rows this could break
+        results = cursor.fetchall()
+
+        # de-nest the list
+        results = [row[0] for row in results]
+
+        return results
+        
+    except psycopg2.Error as e:
+        # If an error occurs during execution, handle the exception
+        print("Error executing query in find_values_not_in_col:", e)

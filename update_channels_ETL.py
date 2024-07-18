@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
-from db_utils import make_db_connection
+from db_utils import make_db_connection, select_all_from_col, insert_rows
 
-def make_channel_request(api_key, collected_at, channel_ids):
+def channel_ids_api_request(channel_ids, api_key, collected_at):
     channels_api_url = "https://www.googleapis.com/youtube/v3/channels"
 
     channel_df = pd.DataFrame(columns=["collected_at", 
@@ -77,13 +77,28 @@ def main():
     # Connect to AWS RDS through SSH tunnel
     conn, cursor, tunnel = make_db_connection(psql_pw)
 
+    # EXTRACT
     # get all channel_ids in channel_dim table
+    channel_ids = select_all_from_col("channel_id", "channel_dim", cursor)
 
     # make api request for current info on all the channels
+    channel_df = channel_ids_api_request(channel_ids, api_key, collected_at)
 
-    # do the same data cleaning as new_channels_ETL
+    # TRANSFORM
+    # Turn created_datetime into datetime
+    channel_df["created_datetime"] = pd.to_datetime(channel_df["created_datetime"])
+    
+    # Fill NaNs and turn these into ints
+    channel_df[["channel_total_views", "num_subscribers", "num_videos"]] = channel_df[["channel_total_views", "num_subscribers", "num_videos"]].fillna(0)
+    channel_df[["channel_total_views", "num_subscribers", "num_videos"]] = channel_df[["channel_total_views", "num_subscribers", "num_videos"]].astype(dtype=np.int64)
 
-    # load into channel_fact table
+    # LOAD
+    # insert into fact table
+    insert_rows(channel_df, 
+                ["collected_at", "channel_id", "channel_total_views", "num_subscribers", "num_videos"], 
+                "channel_fact", 
+                cursor, 
+                conn)
 
     conn.close()
     cursor.close()

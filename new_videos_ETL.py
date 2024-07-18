@@ -5,8 +5,8 @@ import pandas as pd
 from dotenv import load_dotenv
 from db_utils import make_db_connection, insert_rows, find_values_not_in_col
 
-def make_video_request(api_key, collected_at):
-
+def top_videos_api_request(api_key, collected_at):
+    # get the top 200 videos on YouTube currently
     videos_api_url = "https://www.googleapis.com/youtube/v3/videos"
 
     video_df = pd.DataFrame(columns=["collected_at", 
@@ -111,7 +111,7 @@ def main():
     # Videos ETL
     # get data on top 200 most popular videos currently
     # EXTRACT
-    video_df = make_video_request(api_key, collected_at)
+    video_df = top_videos_api_request(api_key, collected_at)
 
     # check which video_ids aren't already in video_dim table
     values = video_df.loc[:, "video_id"].tolist()

@@ -4,7 +4,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from db_utils import make_db_connection, insert_rows, find_values_not_in_col
 
-def make_categories_request(api_key):
+def categories_api_request(api_key):
     categories_api_url = "https://www.googleapis.com/youtube/v3/videoCategories"
     
     categories_df = pd.DataFrame(columns=["category_id","category_name"])
@@ -46,7 +46,7 @@ def main():
 
     # Video Categories ETL
     # EXTRACT
-    categories_df = make_categories_request(api_key)
+    categories_df = categories_api_request(api_key)
 
     # check which videoCategory_ids aren't already in categories_dim table
     # cast category_id to int to work with util function

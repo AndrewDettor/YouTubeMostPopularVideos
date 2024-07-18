@@ -6,7 +6,7 @@ import numpy as np
 from dotenv import load_dotenv
 from db_utils import make_db_connection, insert_rows, find_values_not_in_col
 
-def make_channel_request(api_key, collected_at, channel_ids):
+def channel_api_request(api_key, collected_at, channel_ids):
     channels_api_url = "https://www.googleapis.com/youtube/v3/channels"
 
     channel_df = pd.DataFrame(columns=["collected_at", 
@@ -94,7 +94,7 @@ def main():
     # print(f"len(channel_ids_not_in_table): {len(channel_ids_not_in_table)}")
 
     # EXTRACT
-    channel_df = make_channel_request(api_key, collected_at, channel_ids_not_in_table)
+    channel_df = channel_api_request(api_key, collected_at, channel_ids_not_in_table)
     
     # TRANSFORM
     # Turn created_datetime into datetime
