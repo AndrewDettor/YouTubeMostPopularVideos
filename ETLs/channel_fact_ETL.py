@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
-from db_utils import make_db_connection, select_all_from_col, insert_rows
+from db_utils import db_connection_ssh_tunnel, select_all_from_col, insert_rows
 
 def channel_fact_api_request(channel_ids, api_key, collected_at):
     channels_api_url = "https://www.googleapis.com/youtube/v3/channels"
@@ -60,6 +60,7 @@ def make_chunks(lst, n):
     return [lst[i:i + n] for i in range(0, len(lst), n)]
 
 def main():
+    print("Starting channel_fact_ETL")
     collected_at = datetime.now(timezone.utc) # YT API uses UTC timezone
     
     # Load environment variables from .env file
@@ -68,7 +69,7 @@ def main():
     psql_pw = os.getenv("PSQL_PW")
 
     # Connect to AWS RDS through SSH tunnel
-    conn, cursor, tunnel = make_db_connection(psql_pw)
+    conn, cursor, tunnel = db_connection_ssh_tunnel(psql_pw)
 
     # EXTRACT
     # get all channel_ids in channel_dim table

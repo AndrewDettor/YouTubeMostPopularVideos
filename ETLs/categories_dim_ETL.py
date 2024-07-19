@@ -2,7 +2,7 @@ import os
 import requests
 import pandas as pd
 from dotenv import load_dotenv
-from db_utils import make_db_connection, insert_rows, find_values_not_in_col
+from db_utils import db_connection_ssh_tunnel, insert_rows, find_values_not_in_col
 
 def categories_dim_api_request(api_key):
     categories_api_url = "https://www.googleapis.com/youtube/v3/videoCategories"
@@ -40,13 +40,15 @@ def parse_categories_dim_json(category):
     return [id, name]
 
 def main():
+    print("Starting categories_dim_ETL")
+    
     # Load environment variables from .env file
     load_dotenv("C:\\Users\\detto\\Documents\\YouTubeViewPrediction\\environment_variables.env")
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
 
     # Connect to AWS RDS through SSH tunnel
-    conn, cursor, tunnel = make_db_connection(psql_pw)
+    conn, cursor, tunnel = db_connection_ssh_tunnel(psql_pw)
 
     # EXTRACT
     categories_df = categories_dim_api_request(api_key)

@@ -3,7 +3,7 @@ import requests
 from datetime import datetime, timezone
 import pandas as pd
 from dotenv import load_dotenv
-from db_utils import make_db_connection, insert_rows, find_values_not_in_col
+from db_utils import db_connection_ssh_tunnel, insert_rows, find_values_not_in_col
 
 def video_dim_api_request(api_key):
     # get the top 200 videos on YouTube currently
@@ -83,13 +83,15 @@ def parse_video_dim_json(video):
             category_id]    
 
 def main():
+    print("Starting video_dim_ETL")
+    
     # Load environment variables from .env file
     load_dotenv("C:\\Users\\detto\\Documents\\YouTubeViewPrediction\\environment_variables.env")
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
 
     # Connect to AWS RDS through SSH tunnel
-    conn, cursor, tunnel = make_db_connection(psql_pw)
+    conn, cursor, tunnel = db_connection_ssh_tunnel(psql_pw)
 
     # get data on top 200 most popular videos currently
     # EXTRACT

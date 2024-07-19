@@ -3,7 +3,7 @@ import psycopg2
 import psycopg2.extras
 import pandas as pd
 
-def make_db_connection(psql_pw):
+def db_connection_ssh_tunnel(psql_pw):
     # SSH parameters
     bastion_host = 'ec2-34-224-93-62.compute-1.amazonaws.com'
     bastion_user = 'ec2-user'
@@ -52,6 +52,38 @@ def make_db_connection(psql_pw):
     except (Exception, psycopg2.Error) as error:
         print("Error while connecting to PostgreSQL", error)
         tunnel.stop()
+
+def db_connection_no_tunnel(psql_pw):
+    # connect to database
+    host = "youtubeviewprediction.cd0c8oow2pnr.us-east-1.rds.amazonaws.com"
+    port = 5432
+    dbname = "YouTubeViewPrediction"
+    user = "postgres"
+
+    try:
+        # Connect to the PostgreSQL database
+        connection = psycopg2.connect(
+            host=host,
+            port=port,
+            dbname=dbname,
+            user=user,
+            password=psql_pw
+        )
+
+        # Create a cursor object using the cursor() method
+        cursor = connection.cursor()
+
+        # Execute a SQL query
+        cursor.execute("SELECT version();")
+
+        # Fetch result
+        record = cursor.fetchone()
+        print("You are connected to - ", record, "\n")
+        return connection, cursor
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while connecting to PostgreSQL", error)
+        return None, None
 
 def insert_rows(df, cols, table_name, cursor, conn):
     num_rows = df.shape[0]

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
-from db_utils import insert_rows, make_db_connection, select_all_from_col
+from db_utils import insert_rows, db_connection_ssh_tunnel, select_all_from_col
 
 def video_fact_api_request(video_ids, api_key, collected_at):
     # get information about videos given video_ids
@@ -63,6 +63,7 @@ def make_chunks(lst, n):
     return [lst[i:i + n] for i in range(0, len(lst), n)]
 
 def main():
+    print("Starting video_fact_ETL")
     collected_at = datetime.now(timezone.utc) # YT API uses UTC timezone
     
     # Load environment variables from .env file
@@ -71,7 +72,7 @@ def main():
     psql_pw = os.getenv("PSQL_PW")
 
     # Connect to AWS RDS through SSH tunnel
-    conn, cursor, tunnel = make_db_connection(psql_pw)
+    conn, cursor, tunnel = db_connection_ssh_tunnel(psql_pw)
 
     # EXTRACT
     # get all video_ids in video_dim table
