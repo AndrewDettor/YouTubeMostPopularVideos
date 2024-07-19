@@ -3,8 +3,7 @@ import requests
 from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
-from db_utils import db_connection_ssh_tunnel, insert_rows, find_values_not_in_col
+from db_utils import make_db_connection, insert_rows, find_values_not_in_col
 
 def channel_dim_api_request(api_key, channel_ids):
     channels_api_url = "https://www.googleapis.com/youtube/v3/channels"
@@ -58,17 +57,16 @@ def make_chunks(lst, n):
 def main():
     print("Starting channel_dim_ETL")
     
-    # Load environment variables from .env file
-    load_dotenv("C:\\Users\\detto\\Documents\\YouTubeViewPrediction\\environment_variables.env")
+    # Load environment variables from .bashrc
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
 
-    # Connect to AWS RDS through SSH tunnel
-    conn, cursor, tunnel = db_connection_ssh_tunnel(psql_pw)
+    # Connect to RDS from EC2 instance
+    conn, cursor = make_db_connection(psql_pw)
 
     # Get YouTube channel ids from the last ETL
     # Read the values from the text file into a list
-    with open("C:\\Users\\detto\\Documents\\YouTubeViewPrediction\\ETLs\\unique_channel_ids.txt", 'r') as file:
+    with open("/home/ec2-user/YouTubeViewPrediction/ETLs/unique_channel_ids.txt", 'r') as file:
         unique_channel_ids = file.readlines()
 
     # Remove any trailing newline characters
@@ -76,13 +74,15 @@ def main():
 
     # check which channel_ids aren't already in channel_dim table
     channel_ids_not_in_table = find_values_not_in_col(unique_channel_ids, "channel_id", "channel_dim", cursor)
+    print(f"\tRequesting YT API current info on {len(channel_ids_not_in_table)} channel ids")
 
     # EXTRACT
     channel_df = channel_dim_api_request(api_key, channel_ids_not_in_table)
     
     # TRANSFORM
     # Turn created_datetime into datetime
-    channel_df["created_datetime"] = pd.to_datetime(channel_df["created_datetime"])
+    channel_df["created_datetime"] = pd.to_datetime(channel_df["created_datetime"], format='ISO8601')
+    # %Y-%m-%dT%H:%M:%S%z
     
     # LOAD
     # database and tables already created in pgAdmin
@@ -95,7 +95,6 @@ def main():
 
     conn.close()
     cursor.close()
-    tunnel.stop()
 
 if __name__ == "__main__":
     main()

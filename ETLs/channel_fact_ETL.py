@@ -3,8 +3,7 @@ import requests
 from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
-from db_utils import db_connection_ssh_tunnel, select_all_from_col, insert_rows
+from db_utils import make_db_connection, select_all_from_col, insert_rows
 
 def channel_fact_api_request(channel_ids, api_key, collected_at):
     channels_api_url = "https://www.googleapis.com/youtube/v3/channels"
@@ -63,17 +62,17 @@ def main():
     print("Starting channel_fact_ETL")
     collected_at = datetime.now(timezone.utc) # YT API uses UTC timezone
     
-    # Load environment variables from .env file
-    load_dotenv("C:\\Users\\detto\\Documents\\YouTubeViewPrediction\\environment_variables.env")
+    # Load environment variables from .bashrc
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
 
-    # Connect to AWS RDS through SSH tunnel
-    conn, cursor, tunnel = db_connection_ssh_tunnel(psql_pw)
+    # Connect to RDS from EC2 instance
+    conn, cursor = make_db_connection(psql_pw)
 
     # EXTRACT
     # get all channel_ids in channel_dim table
     channel_ids = select_all_from_col("channel_id", "channel_dim", cursor)
+    print(f"\tRequesting YT API current info on {len(channel_ids)} channel ids")
 
     # make api request for current info on all the channels
     channel_df = channel_fact_api_request(channel_ids, api_key, collected_at)
@@ -93,7 +92,6 @@ def main():
 
     conn.close()
     cursor.close()
-    tunnel.stop()
 
 if __name__ == "__main__":
     main()

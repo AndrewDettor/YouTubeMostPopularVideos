@@ -3,8 +3,7 @@ import requests
 from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
-from db_utils import insert_rows, db_connection_ssh_tunnel, select_all_from_col
+from db_utils import insert_rows, make_db_connection, select_all_from_col
 
 def video_fact_api_request(video_ids, api_key, collected_at):
     # get information about videos given video_ids
@@ -66,17 +65,17 @@ def main():
     print("Starting video_fact_ETL")
     collected_at = datetime.now(timezone.utc) # YT API uses UTC timezone
     
-    # Load environment variables from .env file
-    load_dotenv("C:\\Users\\detto\\Documents\\YouTubeViewPrediction\\environment_variables.env")
+    # Load environment variables from .bashrc
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
 
-    # Connect to AWS RDS through SSH tunnel
-    conn, cursor, tunnel = db_connection_ssh_tunnel(psql_pw)
+    # Connect to RDS from EC2 instance
+    conn, cursor = make_db_connection(psql_pw)
 
     # EXTRACT
     # get all video_ids in video_dim table
     video_ids = select_all_from_col("video_id", "video_dim", cursor)
+    print(f"\tRequesting YT API current info on {len(video_ids)} video ids")
 
     # make api request to get current info for all the videos
     video_df = video_fact_api_request(video_ids, api_key, collected_at)
@@ -98,7 +97,6 @@ def main():
 
     conn.close()
     cursor.close()
-    tunnel.stop()
 
 if __name__ == "__main__":
     main()

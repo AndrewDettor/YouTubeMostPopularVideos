@@ -2,8 +2,7 @@ import os
 import requests
 from datetime import datetime, timezone
 import pandas as pd
-from dotenv import load_dotenv
-from db_utils import db_connection_ssh_tunnel, insert_rows, find_values_not_in_col
+from db_utils import make_db_connection, insert_rows, find_values_not_in_col
 
 def video_dim_api_request(api_key):
     # get the top 200 videos on YouTube currently
@@ -85,13 +84,12 @@ def parse_video_dim_json(video):
 def main():
     print("Starting video_dim_ETL")
     
-    # Load environment variables from .env file
-    load_dotenv("C:\\Users\\detto\\Documents\\YouTubeViewPrediction\\environment_variables.env")
+    # Load environment variables from .bashrc
     api_key = os.getenv("API_KEY")
     psql_pw = os.getenv("PSQL_PW")
 
-    # Connect to AWS RDS through SSH tunnel
-    conn, cursor, tunnel = db_connection_ssh_tunnel(psql_pw)
+    # Connect to RDS from EC2 instance
+    conn, cursor = make_db_connection(psql_pw)
 
     # get data on top 200 most popular videos currently
     # EXTRACT
@@ -126,15 +124,14 @@ def main():
     unique_channel_ids = video_df["channel_id"].unique()
 
     # write to a text file to be used by the next ETL
-    with open("C:\\Users\\detto\\Documents\\YouTubeViewPrediction\\ETLs\\unique_channel_ids.txt", "w") as file:
+    with open("/home/ec2-user/YouTubeViewPrediction/ETLs/unique_channel_ids.txt", "w") as file:
         for channel_id in unique_channel_ids:
             file.write(channel_id + "\n")
     
-    print(f"Created text file of {len(unique_channel_ids)} channel ids for new_channels_ETL")
+    print(f"\tCreated text file of {len(unique_channel_ids)} channel ids for channel_dim_ETL")
 
     conn.close()
     cursor.close()
-    tunnel.stop()
 
 if __name__ == "__main__":
     main()
