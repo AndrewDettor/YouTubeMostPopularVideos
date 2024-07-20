@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -l
 
 # Activate virtual environment
 source ~/anaconda3/etc/profile.d/conda.sh
