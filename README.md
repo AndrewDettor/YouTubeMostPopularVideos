@@ -1,5 +1,5 @@
 # YouTubeMostPopularVideos
-Data ETL pipeline using YouTube API, AWS EC2, and AWS RDS, with EDA and Tableau visualizations.
+ETL data pipeline using YouTube API, AWS EC2, and AWS RDS, with EDA and Tableau visualizations.
 
 ## What I did
 This repository holds Python code and a bash shell script that run on an Amazon Web Services (AWS) Elastic Compute Cloud (EC2) instance. Data relating to the current top 200 most popular videos on YouTube are extracted using the YouTube API, transformed using Pandas, and loaded into a data warehouse in AWS' Relational Database Service (RDS).
