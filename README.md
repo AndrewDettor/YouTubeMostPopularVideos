@@ -4,13 +4,13 @@ Data ETL pipeline using YouTube API, AWS EC2, and AWS RDS.
 ## What I did
 This repository holds Python code and a bash shell script that run on an Amazon Web Services (AWS) Elastic Compute Cloud (EC2) instance. Data relating to the current top 200 most popular videos on YouTube are extracted using the YouTube API, transformed using Pandas, and loaded into a data warehouse in AWS' Relational Database Service (RDS).
 
-[Database Diagram]([https://github.com/AndrewDettor/TrackNet-Pickleball/blob/main/tnv2%20architecture%20picture.png](https://github.com/AndrewDettor/YouTubeMostPopularVideos/blob/main/Database%20Diagram.png))
+![Database Diagram](https://github.com/AndrewDettor/YouTubeMostPopularVideos/blob/main/Database%20Diagram.png?raw=true)
 
 Data is then pulled into a local Jupyter Notebook instance using an SSH tunnel and processed further for exploratory data analysis (EDA).
 
 Insights gained from the EDA are used to create a dashboard in Tableau displaying key information about the views on the most popular YouTube videos.
 
-[Tableau Dashboard]([https://github.com/AndrewDettor/TrackNet-Pickleball/blob/main/tnv2%20architecture%20picture.png](https://github.com/AndrewDettor/YouTubeMostPopularVideos/blob/main/Y))
+![Tableau Dashboard](https://github.com/AndrewDettor/YouTubeMostPopularVideos/blob/main/YouTube%20Views%20Dashboard.png?raw=true)
 
 ## Skills I learned
 - Requesting and parsing data from multiple API endpoints
