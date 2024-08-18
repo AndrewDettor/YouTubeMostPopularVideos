@@ -14,7 +14,7 @@ Data is then pulled into a local Jupyter Notebook instance using an SSH tunnel a
 Insights gained from the EDA are used to create a dashboard in Tableau displaying key information about the views on the most popular YouTube videos.
 
 Tableau Dashboard:
-![Tableau Dashboard](https://github.com/AndrewDettor/YouTubeMostPopularVideos/blob/main/YouTube%20Views%20Dashboard.png?raw=true)
+![Tableau Dashboard](https://github.com/AndrewDettor/YouTubeMostPopularVideos/blob/main/YouTubeViews%20Dashboard.png?raw=true)
 
 ## Skills I learned
 - Requesting and parsing data from multiple API endpoints
